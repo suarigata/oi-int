@@ -1,0 +1,24 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+../include/arglib/arglib.hpp
+string
+-
+sstream
+-
+iostream
+-
+vector
+-
+
+/home/vanderson/dev/mestrado/oi-int/arglib/arglib.cpp
+arglib/arglib.hpp
+-
+map
+-
+

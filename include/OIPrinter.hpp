@@ -106,7 +106,7 @@ namespace dbt {
           Out << "modu";
           break;
         case Syscall:
-          Out << "sycall";
+          Out << "syscall";
           break;
         case Nop:
           Out << "nop";
@@ -210,6 +210,9 @@ namespace dbt {
         case Ceqs:
           Out << "c.eq.s";
           break;
+        case Cueqd:
+          Out << "c.ueq.d";
+          break;
         case Ceqd:
           Out << "c.eq.d";
           break;
@@ -217,7 +220,7 @@ namespace dbt {
           Out << "bc1f";
           break;
         case Bc1t:
-          Out << "bc1f";
+          Out << "bc1t";
           break;
         case Movs:
           Out << "mov.s";
@@ -236,6 +239,9 @@ namespace dbt {
           break;
         case Movtd:
           Out << "movt.d";
+          break;
+        case Movts:
+          Out << "movt.s";
           break;
         case Movfd:
           Out << "movf.d";
@@ -327,6 +333,9 @@ namespace dbt {
         case Cund:
           Out << "C.un.d";
           break;
+        case Cuns:
+          Out << "C.un.s";
+          break;
         case Divs:
           Out << "div.s";
           break;
@@ -345,6 +354,9 @@ namespace dbt {
         case Subs:
           Out << "sub.s";
           break;
+        case Subd:
+          Out << "sub.d";
+          break;
         case Mfhc1:
           Out << "mfhc1";
           break;
@@ -356,6 +368,9 @@ namespace dbt {
           break;
         case Madds:
           Out << "madd.s";
+          break;
+        case Maddd:
+          Out << "madd.d";
           break;
         case Sqrts:
           Out << "sqrt.s";
@@ -374,9 +389,9 @@ namespace dbt {
       switch (dbt::OIDecoder::getEncodingType(I.Type)) {
         // TODO PL26ij and PL20i
         case EncodingType::PL26i:
-          if (I.Type == OIInstType::Ldw || I.Type == OIInstType::Stw) 
+          if (I.Type == OIInstType::Ldw || I.Type == OIInstType::Stw)
             Out << "  $" << (uint32_t) I.RT << ", " << I.Imm << "($" << (uint32_t) I.RS << ")";
-          else if (I.Type == OIInstType::Jne || I.Type == OIInstType::Jnez || I.Type == OIInstType::Jeq || I.Type == OIInstType::Jeqz) 
+          else if (I.Type == OIInstType::Jne || I.Type == OIInstType::Jnez || I.Type == OIInstType::Jeq || I.Type == OIInstType::Jeqz)
             Out << "  $" << (uint32_t) I.RT << ", $" << (uint32_t) I.RS << ", " << ((I.Imm << 2) + 4);
           else
             Out << "  $" << (uint32_t) I.RT << ", $" << (uint32_t) I.RS << ", " << I.Imm;
@@ -391,28 +406,28 @@ namespace dbt {
           Out << "  $" << (uint32_t) I.RD << ", $" << (uint32_t) I.RS << ", $" << (uint32_t) I.RT;
           break;
         case EncodingType::PL12:
-          Out << "  $" << (uint32_t) I.RT << ", $" << (uint32_t) I.RS;
+          Out << "  $" << (uint32_t) I.RS << ", $" << (uint32_t) I.RT;
           break;
         case EncodingType::PL20:
-          if (I.Type == OIInstType::Jlez || I.Type == OIInstType::Jgtz || I.Type == OIInstType::Jltz || I.Type == OIInstType::Jgez) 
+          if (I.Type == OIInstType::Jlez || I.Type == OIInstType::Jgtz || I.Type == OIInstType::Jltz || I.Type == OIInstType::Jgez)
             Out << " $" << (uint32_t) I.RT << ", " << ((I.Imm << 2) + 4);
           else
             Out << " $" << (uint32_t) I.RT << ", " << I.Imm;
           break;
         case EncodingType::PL26c:
-          Out << " " << I.Addrs;
+          Out << " " << std::hex << I.Addrs << std::dec;
           break;
         case EncodingType::PL6:
           Out << " $" << (uint32_t) I.RT;
           break;
         case EncodingType::PL26j:
-          Out << " " << I.Addrs;
+          Out << " " << (I.Addrs << 2);
           break;
         case EncodingType::PL16:
           Out << " " << ((I.Imm << 2) + 4);
           break;
         case EncodingType::PL0:
-        default: 
+        default:
           std::cout << "---";
           break;
       }

@@ -13,6 +13,7 @@ clarg::argString BinaryFlag("-bin",  "path to the binary which will should be em
 clarg::argBool   VerboseFlag("-v",  "display the compiled regions");
 clarg::argBool   HelpFlag("-h",  "display the help message");
 clarg::argInt    RegionLimitSize("-l", "region size limit", 400);
+clarg::argString ArgumentsFlag("-args", "Pass Parameters to binary file (as string)", "");
 
 void usage(char* PrgName) {
   cout << "Version: 0.0.1 (03-01-2017)\n\n";
@@ -68,7 +69,6 @@ int main(int argc, char** argv) {
   if (validateArguments())
     return 1;
 
-
   int loadStatus = M.loadELF(BinaryFlag.get_value());
 
   if (!loadStatus) {
@@ -78,6 +78,9 @@ int main(int argc, char** argv) {
 
   std::unique_ptr<dbt::SyscallManager> SyscallM;
   SyscallM = std::make_unique<dbt::LinuxSyscallManager>();
+
+  if (M.setCommandLineArguments(ArgumentsFlag.get_value()) < 0)                                                                                  
+    exit(1);  
 
   dbt::ITDInterpreter I(*SyscallM.get());
   std::cout << "Starting execution:\n";

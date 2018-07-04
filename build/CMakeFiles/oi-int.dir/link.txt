@@ -1,0 +1,1 @@
+/usr/bin/c++  -Ofast -Werror -Wall -Wextra -Wno-unused-function -std=c++17 -fno-rtti -flto -DNDEBUG   -Ofast -flto CMakeFiles/oi-int.dir/main.cpp.o  -o oi-int libdbt.a arglib/libarglib.a -lz 

@@ -3,16 +3,28 @@
 #include <cmath>
 #include <iostream>
 
-#include <memory.h>
-
 using namespace dbt;
 using namespace dbt::OIDecoder;
 
-#if DEBUG
-#include <OIPrinter.hpp>
-#define DEBUG_PRINT(Addr, Inst) std::cout << std::hex << Addr << "\t" << OIPrinter::getString(Inst) << std::dec << "\n";
+#ifdef COLOR
+#define COLOR_CYAN "\033[1;35m"
+#define COLOR_NONE "\033[0m"
 #else
-#define DEBUG_PRINT(Addr, Inst) 
+#define COLOR_CYAN ""
+#define COLOR_NONE ""
+#endif
+
+//#define PRINTINST
+
+uint64_t instacc = 0;
+#ifdef PRINTINST
+#include <OIPrinter.hpp>
+//#define DEBUG_PRINT(Addr, Inst) std::cerr << OIPrinter::getString(Inst) << "\n";
+//#define DEBUG_PRINT(Addr, Inst) std::cerr << /*std::dec << (++instacc) <<" -- "<<*/ std::hex << Addr << "\t" << OIPrinter::getString(Inst) << std::dec << "\n";
+//#define DEBUG_PRINT(Addr, Inst) std::cerr << "\n" << COLOR_CYAN <<  std::dec << (++instacc) <<" -- "<< std::hex << Addr << "\t" << OIPrinter::getString(Inst) << std::dec << COLOR_NONE << "\t";
+//#define DEBUG_PRINT(Addr, Inst) std::cerr << "\n" << COLOR_CYAN <<  std::dec << (++instacc) <<" -- "<< std::hex << Addr << "\t" << OIPrinter::getString(Inst) << std::dec << COLOR_NONE << "\t";
+#else
+#define DEBUG_PRINT(Addr, Inst)
 #endif
 
 #define SET_DISPACH(Addrs, Label, Offset)\
@@ -35,6 +47,7 @@ using namespace dbt::OIDecoder;
 
 #define IMPLEMENT_JMP(Label, Code)\
   Label:\
+    /*M.dumpRegisters();*/\
     I = getDecodedInst(M.getPC());\
     {\
       Code\
@@ -43,6 +56,7 @@ using namespace dbt::OIDecoder;
 
 #define IMPLEMENT_BR(Label, Code)\
   Label:\
+    /*M.dumpRegisters();*/\
     I = getDecodedInst(M.getPC());\
     {\
       Code\
@@ -50,7 +64,21 @@ using namespace dbt::OIDecoder;
     M.incPC();\
     GOTO_NEXT
 
-#define rotate_right(x, n) (((x) >> (n)) | ((x) << ((sizeof(x) * 8) - (n))))
+//#define rotate_right(x, n) (((x) >> (n)) | ((x) << ((sizeof(x) * 8) - (n))))
+static inline uint32_t rotate_right(uint32_t input, uint32_t shiftamount) {
+  return (((uint32_t)input) >> shiftamount) |
+         (((uint32_t)input) << (32 - shiftamount));
+}
+
+typedef union DWordBit {
+  double asF;
+  uint64_t asI;
+} DWordBit;
+
+typedef union WordBit {
+  float asF;
+  int32_t asI;
+} WordBit;
 
 bool isnan(double x) { return x != x; }
 bool isnan(float x)  { return x != x; }
@@ -59,9 +87,7 @@ bool ITDInterpreter::isAddrsContainedIn(uint32_t StartAddrs, uint32_t EndAddrs) 
   return !(StartAddrs < LastStartAddrs || EndAddrs > LastEndAddrs);
 }
 
-int num = 0;
-void* ITDInterpreter::getDispatchValue(uint32_t Addrs) {
-  num++;
+inline void* ITDInterpreter::getDispatchValue(uint32_t Addrs) {
   return (void*)DispatchValues[(Addrs-LastStartAddrs)/4];
 }
 
@@ -69,7 +95,7 @@ void ITDInterpreter::setDispatchValue(uint32_t Addrs, int* Target) {
   DispatchValues[(Addrs-LastStartAddrs)/4] = Target;
 }
 
-OIInst ITDInterpreter::getDecodedInst(uint32_t Addrs) {
+inline OIInst ITDInterpreter::getDecodedInst(uint32_t Addrs) {
   return DecodedInsts[(Addrs-LastStartAddrs)/4];
 }
 
@@ -153,6 +179,7 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
       SET_DISPACH(Addrs, Movd,    &&movd);
       SET_DISPACH(Addrs, Movf,    &&movf);
       SET_DISPACH(Addrs, Movt,    &&movt);
+      SET_DISPACH(Addrs, Movts,   &&movts);
       SET_DISPACH(Addrs, Movs,    &&movs);
       SET_DISPACH(Addrs, Movzd,   &&movzd);
       SET_DISPACH(Addrs, Movzs,   &&movzs);
@@ -186,6 +213,9 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
       SET_DISPACH(Addrs, Cults,   &&cults);
       SET_DISPACH(Addrs, Cultd,   &&cultd);
       SET_DISPACH(Addrs, Cules,   &&cules);
+      SET_DISPACH(Addrs, Cuns,    &&cuns);
+      SET_DISPACH(Addrs, Cueqs,   &&cueqs);
+      SET_DISPACH(Addrs, Cueqd,   &&cueqd);
       SET_DISPACH(Addrs, Cund,    &&cund);
       SET_DISPACH(Addrs, Negd,    &&negd);
       SET_DISPACH(Addrs, Negs,    &&negs);
@@ -214,19 +244,20 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
   GOTO_NEXT;
 
   IMPLEMENT(nop, );
-  
+
   /**********************   Int Inst   **************************/
 
-  IMPLEMENT(add, 
+  IMPLEMENT(add,
+
       M.setRegister(I.RD, M.getRegister(I.RS) + M.getRegister(I.RT));
     );
-  
-  IMPLEMENT(sub, 
+
+  IMPLEMENT(sub,
       M.setRegister(I.RD, M.getRegister(I.RS) - M.getRegister(I.RT));
     );
-  
-  IMPLEMENT(mul, 
-      int64_t Result; 
+
+  IMPLEMENT(mul,
+      int64_t Result;
       int32_t Half;
       Result =  (int32_t) M.getRegister(I.RS);
       Result *= (int32_t) M.getRegister(I.RT);
@@ -236,12 +267,12 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
         M.setRegister(I.RD, Half);
 
       Half = ((Result >> 32) & 0xFFFFFFFF);
-      if (I.RV != 0) 
+      if (I.RV != 0)
         M.setRegister(I.RV, Half);
     );
-  
-  IMPLEMENT(mulu, 
-      uint64_t Result; 
+
+  IMPLEMENT(mulu,
+      uint64_t Result;
       int32_t Half;
       Result =  (uint32_t) M.getRegister(I.RS);
       Result *= (uint32_t) M.getRegister(I.RT);
@@ -251,86 +282,86 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
         M.setRegister(I.RD, Half);
 
       Half = ((Result >> 32) & 0xFFFFFFFF);
-      if (I.RV != 0) 
+      if (I.RV != 0)
         M.setRegister(I.RV, Half);
     );
 
-  IMPLEMENT(ext, 
-      uint32_t Lsb = I.RV;
-      uint32_t Size = I.RT + 1;
-      M.setRegister(I.RD, (M.getRegister(I.RS) << (32 - Size - Lsb)) >> (32 - Size));
-    );
-  
-  IMPLEMENT(div, 
+  IMPLEMENT(ext,
+     uint32_t Lsb = I.RS;
+     uint32_t Size = I.RT+1;
+     M.setRegister(I.RV, (((unsigned)M.getRegister(I.RD)) << (32 - Size - Lsb)) >> (32 - Size));
+   );
+
+  IMPLEMENT(div,
       M.setRegister(I.RD, M.getRegister(I.RS) / M.getRegister(I.RT));
     );
-  
-  IMPLEMENT(mod, 
+
+  IMPLEMENT(mod,
       M.setRegister(I.RV, M.getRegister(I.RS) % M.getRegister(I.RT));
     );
 
-  IMPLEMENT(divu, 
+  IMPLEMENT(divu,
       M.setRegister(I.RD, (uint32_t) M.getRegister(I.RS) / (uint32_t) M.getRegister(I.RT));
     );
 
-  IMPLEMENT(modu, 
+  IMPLEMENT(modu,
       M.setRegister(I.RV, (uint32_t) M.getRegister(I.RS) % (uint32_t) M.getRegister(I.RT));
     );
 
-  IMPLEMENT(ldhu, 
+  IMPLEMENT(ldhu,
       unsigned short int half = M.getMemHalfAt(M.getRegister(I.RS) + I.Imm);
       M.setRegister(I.RT, (uint32_t) half);
     );
 
-  IMPLEMENT(ldh, 
+  IMPLEMENT(ldh,
       short int half = M.getMemHalfAt(M.getRegister(I.RS) + I.Imm);
 			M.setRegister(I.RT, (int32_t) half);
     );
 
-  IMPLEMENT(sth, 
+  IMPLEMENT(sth,
       uint16_t half = M.getRegister(I.RT) & 0xFFFF;
       M.setMemByteAt(M.getRegister(I.RS) + I.Imm    , (half)      & 0xFF);
       M.setMemByteAt(M.getRegister(I.RS) + I.Imm + 1, (half >> 8) & 0xFF);
     );
-  
+
   IMPLEMENT(ldi,
       M.setRegister(LDI_REG, I.RT);
       M.setRegister(I.RT, (M.getRegister(I.RT) & 0xFFFFC000) | (I.Imm & 0x3FFF));
     );
-  
+
   IMPLEMENT(ldihi,
       M.setRegister(M.getRegister(LDI_REG), (M.getRegister(M.getRegister(LDI_REG)) & 0x3FFF) | (I.Addrs << 14));
     );
-  
+
   IMPLEMENT(ldw,
       M.setRegister(I.RT, M.getMemValueAt(M.getRegister(I.RS) + I.Imm).asI_);
     );
-  
+
   IMPLEMENT(addi,
       M.setRegister(I.RT, M.getRegister(I.RS) + I.Imm);
     );
-  
+
   IMPLEMENT(and_,
       M.setRegister(I.RD, M.getRegister(I.RS) & M.getRegister(I.RT));
     );
-  
+
   IMPLEMENT(andi,
       M.setRegister(I.RT, M.getRegister(I.RS) & (I.Imm & 0x3FFF));
     );
-  
+
   IMPLEMENT(or_,
       M.setRegister(I.RD, M.getRegister(I.RS) | M.getRegister(I.RT));
     );
-  
+
   IMPLEMENT(nor,
       M.setRegister(I.RD, ~(M.getRegister(I.RS) | M.getRegister(I.RT)));
     );
-  
+
   IMPLEMENT(shr,
-      unsigned aux = ((uint32_t) M.getRegister(I.RT)) >> (uint32_t) I.RS; 
+      unsigned aux = ((uint32_t) M.getRegister(I.RT)) >> (uint32_t) I.RS;
       M.setRegister(I.RD, aux);
     );
-  
+
   IMPLEMENT(asr,
       M.setRegister(I.RD, ((int32_t) M.getRegister(I.RT)) >> I.RS);
     );
@@ -338,7 +369,7 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
   IMPLEMENT(asrr,
       M.setRegister(I.RD, ((int32_t) M.getRegister(I.RT)) >> (M.getRegister(I.RS) & 0x1F));
     );
-  
+
   IMPLEMENT(shl,
       M.setRegister(I.RD, M.getRegister(I.RT) << I.RS);
     );
@@ -348,9 +379,9 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
     );
 
   IMPLEMENT(shrr,
-      M.setRegister(I.RD, M.getRegister(I.RT) >> (M.getRegister(I.RS) & 0x1F));
+      M.setRegister(I.RD, (uint32_t) M.getRegister(I.RT) >> (M.getRegister(I.RS) & 0x1F));
     );
-  
+
   IMPLEMENT(movn,
       if (M.getRegister(I.RT) != 0)
         M.setRegister(I.RD, M.getRegister(I.RS));
@@ -360,11 +391,11 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
       if (M.getRegister(I.RT) == 0)
         M.setRegister(I.RD, M.getRegister(I.RS));
     );
-  
+
   IMPLEMENT(ldb,
       M.setRegister(I.RT, (int32_t) M.getMemByteAt(M.getRegister(I.RS) + I.Imm));
     );
-  
+
   IMPLEMENT(ldbu,
       M.setRegister(I.RT, (uint32_t) M.getMemByteAt(M.getRegister(I.RS) + I.Imm));
     );
@@ -376,34 +407,34 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
   IMPLEMENT(seb,
       M.setRegister(I.RS, (int32_t) ((int8_t) M.getRegister(I.RT)));
     );
-  
+
   IMPLEMENT(stb,
       M.setMemByteAt(M.getRegister(I.RS) + I.Imm, (unsigned char) M.getRegister(I.RT) & 0xFF);
     );
-  
+
   IMPLEMENT(stw,
       M.setMemValueAt(M.getRegister(I.RS) + I.Imm, M.getRegister(I.RT));
     );
-  
+
   IMPLEMENT(sltiu,
       if (((uint32_t) M.getRegister(I.RS)) < ((uint32_t) (I.Imm & 0x3FFF)))
         M.setRegister(I.RT, 1);
       else
         M.setRegister(I.RT, 0);
     );
-  
+
   IMPLEMENT(slti,
       M.setRegister(I.RT, (int32_t) M.getRegister(I.RS) < (int32_t) I.Imm);
     );
-  
+
   IMPLEMENT(sltu,
       M.setRegister(I.RD, (uint32_t) M.getRegister(I.RS) < (uint32_t) M.getRegister(I.RT));
     );
-  
+
   IMPLEMENT(slt,
       M.setRegister(I.RD, (int32_t) M.getRegister(I.RS) < (int32_t) M.getRegister(I.RT));
     );
-  
+
   IMPLEMENT(xori,
       M.setRegister(I.RT, M.getRegister(I.RS) ^ (I.Imm & 0x3FFF));
     );
@@ -411,7 +442,7 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
   IMPLEMENT(xor_,
       M.setRegister(I.RD, M.getRegister(I.RS) ^ M.getRegister(I.RT));
     );
-  
+
   IMPLEMENT(ori,
       M.setRegister(I.RT, M.getRegister(I.RS) | (I.Imm & 0x3FFF));
     );
@@ -420,110 +451,109 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
       M.setRegister(I.RD, rotate_right(M.getRegister(I.RT), I.RS));
     );
 
-  IMPLEMENT(ijmphi, 
-        M.setRegister(IJMP_REG, 0);
-        M.setRegister(IJMP_REG, M.getRegister(IJMP_REG) | I.Addrs << 12); 
+  IMPLEMENT(ijmphi,
+      M.setRegister(IJMP_REG, 0 | (I.Addrs << 12));
     );
-  
+
   /**********************  Float Inst  **************************/
 
-   IMPLEMENT(absd, 
+   IMPLEMENT(absd,
        M.setDoubleRegister(I.RS, fabs(M.getDoubleRegister(I.RT)));
     );
 
-   IMPLEMENT(abss, 
+   IMPLEMENT(abss,
        M.setFloatRegister(I.RS, fabs(M.getFloatRegister(I.RT)));
     );
 
-   IMPLEMENT(ldc1, 
-      M.setRegister(130 + I.RT*2 + 0, M.getMemValueAt(M.getRegister(I.RS) + I.Imm  ).asI_);
-      M.setRegister(130 + I.RT*2 + 1, M.getMemValueAt(M.getRegister(I.RS) + I.Imm+4).asI_);
+   IMPLEMENT(ldc1,
+			int32_t* R = M.getRegisterPtr();
+			char* M1 = M.getByteMemoryPtr();	
+			uint32_t Offset = M.getDataMemOffset();
+			
+			*(((int64_t*) R) + 65 + I.RT) = *((int64_t*) ((M1 + I.Imm + (*(R + I.RS))) - Offset));
     );
 
-   IMPLEMENT(lwc1, 
+   IMPLEMENT(lwc1,
        M.setFloatRegister(I.RT, M.getMemValueAt(M.getRegister(I.RS) + I.Imm).asF_);
     );
 
-   IMPLEMENT(lwxc1, 
+   IMPLEMENT(lwxc1,
        M.setFloatRegister(I.RD, M.getMemValueAt(M.getRegister(I.RT) + M.getRegister(I.RS)).asF_);
     );
 
-   IMPLEMENT(ldxc1, 
-      M.setRegister(130 + I.RD*2 + 0,  M.getMemValueAt(M.getRegister(I.RT) + M.getRegister(I.RS)).asI_);
-      M.setRegister(130 + I.RD*2 + 1,  M.getMemValueAt(M.getRegister(I.RT) + M.getRegister(I.RS) + 4).asI_);
+   IMPLEMENT(ldxc1,
+			int32_t* R = M.getRegisterPtr();
+			char* M1 = M.getByteMemoryPtr();	
+			uint32_t Offset = M.getDataMemOffset();
+			
+			*(((int64_t*) R) + 65 + I.RD) = *((int64_t*) ((M1 + (*(R + I.RT)) + (*(R + I.RS))) - Offset));
     );
 
-   IMPLEMENT(sdxc1, 
-      M.setMemValueAt(M.getRegister(I.RT) + M.getRegister(I.RS) + 4, M.getRegister(130 + I.RT*2 + 1));
-      M.setMemValueAt(M.getRegister(I.RT) + M.getRegister(I.RS)    , M.getRegister(130 + I.RT*2 + 0));
+   IMPLEMENT(sdxc1,
+      M.setMemValueAt(M.getRegister(I.RT) + M.getRegister(I.RS) +0, M.getRegister(130 + I.RD*2 + 0));
+      M.setMemValueAt(M.getRegister(I.RT) + M.getRegister(I.RS) +4 , M.getRegister(130 + I.RD*2 + 1));
     );
 
-   IMPLEMENT(sdc1, 
-      M.setMemValueAt(M.getRegister(I.RS) + I.Imm + 4, M.getRegister(130 + I.RT*2 + 1));
-      M.setMemValueAt(M.getRegister(I.RS) + I.Imm    , M.getRegister(130 + I.RT*2 + 0));
+   IMPLEMENT(sdc1,
+      M.setMemValueAt(M.getRegister(I.RS) + I.Imm +0, M.getRegister(130 + I.RT*2+0));
+      M.setMemValueAt(M.getRegister(I.RS) + I.Imm +4, M.getRegister(130 + I.RT*2+1));
     );
 
-   IMPLEMENT(swc1, 
+   IMPLEMENT(swc1,
       M.setMemValueAt(M.getRegister(I.RS) + I.Imm, M.getRegister(66 + I.RT));
     );
 
-   IMPLEMENT(swxc1, 
+   IMPLEMENT(swxc1,
       M.setMemValueAt(M.getRegister(I.RT) + M.getRegister(I.RS), M.getRegister(66 + I.RD));
     );
 
-   IMPLEMENT(mtlc1, 
-       double Temp = M.getDoubleRegister(I.RT);
-       uint64_t ToInt;
-       memcpy(&ToInt, &Temp, sizeof(uint64_t));
-       ToInt = (ToInt & 0xFFFFFFFF00000000ULL) + (((uint64_t) M.getDoubleRegister(I.RS)));
-       memcpy(&Temp, &ToInt, sizeof(uint64_t));
-       M.setDoubleRegister(I.RT, Temp);
+   IMPLEMENT(mtlc1,
+       DWordBit DW;
+       DW.asF = M.getDoubleRegister(I.RT);
+       DW.asI = (DW.asI & 0xFFFFFFFF00000000ULL) + (((uint64_t) M.getRegister(I.RS)));
+       M.setDoubleRegister(I.RT, DW.asF);
     );
 
-   IMPLEMENT(mthc1, 
-       double Temp = M.getDoubleRegister(I.RT);
-       uint64_t ToInt;
-       memcpy(&ToInt, &Temp, sizeof(uint64_t));
-       ToInt = (ToInt & 0xFFFFFFFFULL) + (((uint64_t) M.getDoubleRegister(I.RS)) << 32);
-       memcpy(&Temp, &ToInt, sizeof(uint64_t));
-       M.setDoubleRegister(I.RT, Temp);
+   IMPLEMENT(mthc1,
+       DWordBit DW;
+       DW.asF = M.getDoubleRegister(I.RT);
+       DW.asI = (DW.asI & 0xFFFFFFFFULL) + (((uint64_t) M.getRegister(I.RS)) << 32);
+       M.setDoubleRegister(I.RT, DW.asF);
     );
 
-   IMPLEMENT(mflc1, 
-       uint64_t Temp;
-       double Input = M.getDoubleRegister(I.RT);
-       memcpy(&Temp, &Input, sizeof(uint64_t));
-       M.setRegister(I.RS, Temp & 0xFFFFFFFF);
+   IMPLEMENT(mflc1,
+       DWordBit DW;
+       DW.asF = M.getDoubleRegister(I.RT);
+       M.setRegister(I.RS, (uint32_t)(DW.asI & 0xFFFFFFFF));
    );
 
-   IMPLEMENT(mfhc1, 
-       uint64_t Temp;
-       double Input = M.getDoubleRegister(I.RT);
-       memcpy(&Temp, &Input, sizeof(uint64_t));
-       M.setRegister(I.RS, Temp >> 32);
+   IMPLEMENT(mfhc1,
+       DWordBit DW;
+       DW.asF = M.getDoubleRegister(I.RT);
+       M.setRegister(I.RS, (uint32_t)(DW.asI >> 32));
    );
 
-   IMPLEMENT(ceqd, 
+   IMPLEMENT(ceqd,
        double A = M.getDoubleRegister(I.RS);
        double B = M.getDoubleRegister(I.RT);
        M.setRegister(CC_REG, A == B ? (isnan(A) || isnan(B) ? 0 : 1) : 0);
     );
 
-   IMPLEMENT(ceqs, 
+   IMPLEMENT(ceqs,
        float A = M.getFloatRegister(I.RS);
        float B = M.getFloatRegister(I.RT);
        M.setRegister(CC_REG, A == B ? (isnan(A) || isnan(B) ? 0 : 1) : 0);
     );
 
-   IMPLEMENT(negd, 
+   IMPLEMENT(negd,
        M.setDoubleRegister(I.RS, -M.getDoubleRegister(I.RT));
     );
 
-   IMPLEMENT(negs, 
+   IMPLEMENT(negs,
        M.setFloatRegister(I.RS, -M.getFloatRegister(I.RT));
     );
 
-   IMPLEMENT(movd, 
+   IMPLEMENT(movd,
        M.setDoubleRegister(I.RS, M.getDoubleRegister(I.RT));
     );
 
@@ -537,122 +567,138 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
         M.setRegister(I.RS, M.getRegister(I.RT));
     );
 
-   IMPLEMENT(movs, 
+   IMPLEMENT(movts,
+      if (M.getRegister(CC_REG) != 0)
+        M.setFloatRegister(I.RS, M.getFloatRegister(I.RT));
+    );
+   IMPLEMENT(movs,
        M.setFloatRegister(I.RS, M.getFloatRegister(I.RT));
     );
 
-   IMPLEMENT(movzd, 
-       if (M.getRegister(I.RT) == 0) 
+   IMPLEMENT(movzd,
+       if (M.getRegister(I.RT) == 0)
         M.setDoubleRegister(I.RD, M.getDoubleRegister(I.RS));
     );
 
-   IMPLEMENT(movzs, 
-       if (M.getRegister(I.RT) == 0) 
+   IMPLEMENT(movzs,
+       if (M.getRegister(I.RT) == 0)
         M.setFloatRegister(I.RD, M.getFloatRegister(I.RS));
     );
 
-   IMPLEMENT(movnd, 
-       if (M.getRegister(I.RT) != 0) 
+   IMPLEMENT(movnd,
+       if (M.getRegister(I.RT) != 0)
         M.setDoubleRegister(I.RD, M.getDoubleRegister(I.RS));
     );
 
-   IMPLEMENT(movns, 
-       if (M.getRegister(I.RT) != 0) 
+   IMPLEMENT(movns,
+       if (M.getRegister(I.RT) != 0)
         M.setFloatRegister(I.RD, M.getFloatRegister(I.RS));
     );
 
-   IMPLEMENT(movfd, 
-       if (M.getRegister(CC_REG) == 0) 
+   IMPLEMENT(movfd,
+       if (M.getRegister(CC_REG) == 0)
         M.setDoubleRegister(I.RS, M.getDoubleRegister(I.RT));
     );
 
-   IMPLEMENT(movfs, 
-       if (M.getRegister(CC_REG) == 0) 
+   IMPLEMENT(movfs,
+       if (M.getRegister(CC_REG) == 0)
         M.setFloatRegister(I.RS, M.getFloatRegister(I.RT));
     );
 
-   IMPLEMENT(movtd, 
-       if (M.getRegister(CC_REG) != 0) 
+   IMPLEMENT(movtd,
+       if (M.getRegister(CC_REG) != 0)
         M.setDoubleRegister(I.RS, M.getDoubleRegister(I.RT));
     );
 
-   IMPLEMENT(adds, 
+   IMPLEMENT(adds,
        M.setFloatRegister(I.RD, M.getFloatRegister(I.RS) + M.getFloatRegister(I.RT));
     );
 
-   IMPLEMENT(subd, 
+   IMPLEMENT(subd,
        M.setDoubleRegister(I.RD, M.getDoubleRegister(I.RS) - M.getDoubleRegister(I.RT));
     );
 
-   IMPLEMENT(subs, 
+   IMPLEMENT(subs,
        M.setFloatRegister(I.RD, M.getFloatRegister(I.RS) - M.getFloatRegister(I.RT));
     );
 
-   IMPLEMENT(muls, 
+   IMPLEMENT(muls,
        M.setFloatRegister(I.RD, M.getFloatRegister(I.RS) * M.getFloatRegister(I.RT));
     );
 
-   IMPLEMENT(muld, 
+   IMPLEMENT(muld,
        M.setDoubleRegister(I.RD, M.getDoubleRegister(I.RS) * M.getDoubleRegister(I.RT));
     );
 
-   IMPLEMENT(divd, 
+   IMPLEMENT(divd,
        M.setDoubleRegister(I.RD, M.getDoubleRegister(I.RS) / M.getDoubleRegister(I.RT));
     );
 
-   IMPLEMENT(divs, 
+   IMPLEMENT(divs,
        M.setFloatRegister(I.RD, M.getFloatRegister(I.RS) / M.getFloatRegister(I.RT));
     );
 
-   IMPLEMENT(addd, 
+   IMPLEMENT(addd,
        M.setDoubleRegister(I.RD, M.getDoubleRegister(I.RS) + M.getDoubleRegister(I.RT));
    );
 
-   IMPLEMENT(maddd, 
+   IMPLEMENT(maddd,
        M.setDoubleRegister(I.RD, M.getDoubleRegister(I.RS) * M.getDoubleRegister(I.RT) + M.getDoubleRegister(I.RV));
    );
 
-   IMPLEMENT(msubs, 
+   IMPLEMENT(msubs,
        M.setFloatRegister(I.RD, M.getFloatRegister(I.RS) * M.getFloatRegister(I.RT) - M.getFloatRegister(I.RV));
    );
 
-   IMPLEMENT(msubd, 
+   IMPLEMENT(msubd,
        M.setDoubleRegister(I.RD, M.getDoubleRegister(I.RS) * M.getDoubleRegister(I.RT) - M.getDoubleRegister(I.RV));
    );
 
-   IMPLEMENT(madds, 
+   IMPLEMENT(madds,
        M.setFloatRegister(I.RD, M.getFloatRegister(I.RS) * M.getFloatRegister(I.RT) + M.getFloatRegister(I.RV));
    );
 
-   IMPLEMENT(mtc1, 
-       M.setFloatRegister(I.RT, M.getRegister(I.RS));
+   IMPLEMENT(mtc1,
+       WordBit Tmp;
+       Tmp.asI = M.getRegister(I.RS);
+       M.setFloatRegister(I.RT, Tmp.asF);
     );
 
-   IMPLEMENT(mfc1, 
-       M.setRegister(I.RS, M.getFloatRegister(I.RT));
+   IMPLEMENT(mfc1,
+       WordBit Tmp;
+       Tmp.asF = M.getFloatRegister(I.RT);
+       M.setRegister(I.RS, Tmp.asI);
     );
 
-   IMPLEMENT(truncws, 
-       M.setFloatRegister(I.RS, (int32_t) M.getFloatRegister(I.RT));
+   IMPLEMENT(truncws,
+       WordBit Tmp;
+       Tmp.asI = (int32_t) M.getFloatRegister(I.RT);
+       M.setFloatRegister(I.RS, Tmp.asF);
     );
 
-   IMPLEMENT(truncwd, 
-       M.setFloatRegister(I.RS, (int32_t) M.getDoubleRegister(I.RT));
+   IMPLEMENT(truncwd,
+       WordBit Tmp;
+       Tmp.asI = (int32_t) M.getDoubleRegister(I.RT);
+       M.setFloatRegister(I.RS, Tmp.asF);
     );
 
-   IMPLEMENT(cvtsw, 
-       M.setFloatRegister(I.RS, (float) (int) M.getFloatRegister(I.RT));
-    );
-   
-   IMPLEMENT(cvtdw, 
-       M.setDoubleRegister(I.RS, (double) (int) M.getFloatRegister(I.RT));
+   IMPLEMENT(cvtsw,
+       WordBit Tmp;
+       Tmp.asF = M.getFloatRegister(I.RT);
+       M.setFloatRegister(I.RS, (float) (int) Tmp.asI);
     );
 
-   IMPLEMENT(cvtds, 
+   IMPLEMENT(cvtdw,
+       WordBit Tmp;
+       Tmp.asF = M.getFloatRegister(I.RT);
+       M.setDoubleRegister(I.RS, (double) (int) Tmp.asI);
+    );
+
+   IMPLEMENT(cvtds,
        M.setDoubleRegister(I.RS, (double) M.getFloatRegister(I.RT));
     );
 
-   IMPLEMENT(cvtsd, 
+   IMPLEMENT(cvtsd,
        M.setFloatRegister(I.RS, (float) M.getDoubleRegister(I.RT));
     );
 
@@ -700,80 +746,92 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
        M.setRegister(CC_REG, (isnan(M.getDoubleRegister(I.RS)) || isnan(M.getDoubleRegister(I.RT))) ? 1 : 0);
     );
 
-   IMPLEMENT(sqrtd, 
+   IMPLEMENT(cuns,
+       M.setRegister(CC_REG, (isnan(M.getFloatRegister(I.RS)) || isnan(M.getFloatRegister(I.RT))) ? 1 : 0);
+    );
+
+   IMPLEMENT(cueqs,
+       M.setRegister(CC_REG, (M.getFloatRegister(I.RS) == M.getFloatRegister(I.RT)) ? 1 : 0);
+    );
+
+   IMPLEMENT(cueqd,
+       M.setRegister(CC_REG, (M.getDoubleRegister(I.RS) == M.getDoubleRegister(I.RT)) ? 1 : 0);
+    );
+
+   IMPLEMENT(sqrtd,
        M.setDoubleRegister(I.RS, sqrt(M.getDoubleRegister(I.RT)));
     );
 
-   IMPLEMENT(sqrts, 
+   IMPLEMENT(sqrts,
        M.setFloatRegister(I.RS, sqrt(M.getFloatRegister(I.RT)));
     );
 
   /********************** JMPs and BRs **************************/
 
   IMPLEMENT_BR(jeq,
-      if (M.getRegister(I.RS) == M.getRegister(I.RT)) { 
-        M.setPC(M.getPC() + (I.Imm << 2) + 4);
-        GOTO_NEXT;
-      }
-    );
-  
-  IMPLEMENT_BR(jeqz,
-      if (M.getRegister(I.RS) == 0) { 
-        M.setPC(M.getPC() + (I.Imm << 2) + 4);
-        GOTO_NEXT;
-      }
-    );
-  
-  IMPLEMENT_BR(jgtz,
-      if (!(M.getRegister(I.RT) & 0x80000000) && (M.getRegister(I.RT) != 0)) { 
-        M.setPC(M.getPC() + (I.Imm << 2) + 4);
-        GOTO_NEXT;
-      }
-    );
-  
-  IMPLEMENT_BR(jgez,
-      if (!(M.getRegister(I.RT) & 0x80000000)) { 
-        M.setPC(M.getPC() + (I.Imm << 2) + 4);
-        GOTO_NEXT;
-      }
-    );
-  
-  IMPLEMENT_BR(jlez,
-      if ((M.getRegister(I.RT) == 0) || (M.getRegister(I.RT) & 0x80000000)) { 
-        M.setPC(M.getPC() + (I.Imm << 2) + 4);
-        GOTO_NEXT;
-      }
-    );
-  
-  IMPLEMENT_BR(jltz,
-      if (M.getRegister(I.RT) & 0x80000000) { 
-        M.setPC(M.getPC() + (I.Imm << 2) + 4);
-        GOTO_NEXT;
-      }
-    );
-  
-  IMPLEMENT_BR(jne,
-      if (M.getRegister(I.RS) != M.getRegister(I.RT)) { 
-        M.setPC(M.getPC() + (I.Imm << 2) + 4);
-        GOTO_NEXT;
-      }
-    );
-  
-  IMPLEMENT_BR(jnez,
-      if (M.getRegister(I.RS) != 0) { 
+      if (M.getRegister(I.RS) == M.getRegister(I.RT)) {
         M.setPC(M.getPC() + (I.Imm << 2) + 4);
         GOTO_NEXT;
       }
     );
 
-   IMPLEMENT_BR(bc1f, 
+  IMPLEMENT_BR(jeqz,
+      if (M.getRegister(I.RS) == 0) {
+        M.setPC(M.getPC() + (I.Imm << 2) + 4);
+        GOTO_NEXT;
+      }
+    );
+
+  IMPLEMENT_BR(jgtz,
+      if (!(M.getRegister(I.RT) & 0x80000000) && (M.getRegister(I.RT) != 0)) {
+        M.setPC(M.getPC() + (I.Imm << 2) + 4);
+        GOTO_NEXT;
+      }
+    );
+
+  IMPLEMENT_BR(jgez,
+      if (!(M.getRegister(I.RT) & 0x80000000)) {
+        M.setPC(M.getPC() + (I.Imm << 2) + 4);
+        GOTO_NEXT;
+      }
+    );
+
+  IMPLEMENT_BR(jlez,
+      if ((M.getRegister(I.RT) == 0) || (M.getRegister(I.RT) & 0x80000000)) {
+        M.setPC(M.getPC() + (I.Imm << 2) + 4);
+        GOTO_NEXT;
+      }
+    );
+
+  IMPLEMENT_BR(jltz,
+      if (M.getRegister(I.RT) & 0x80000000) {
+        M.setPC(M.getPC() + (I.Imm << 2) + 4);
+        GOTO_NEXT;
+      }
+    );
+
+  IMPLEMENT_BR(jne,
+      if (M.getRegister(I.RS) != M.getRegister(I.RT)) {
+        M.setPC(M.getPC() + (I.Imm << 2) + 4);
+        GOTO_NEXT;
+      }
+    );
+
+  IMPLEMENT_BR(jnez,
+      if (M.getRegister(I.RS) != 0) {
+        M.setPC(M.getPC() + (I.Imm << 2) + 4);
+        GOTO_NEXT;
+      }
+    );
+
+   IMPLEMENT_BR(bc1f,
        if (M.getRegister(CC_REG) == 0) {
          M.setPC(M.getPC() + (I.Imm << 2) + 4);
          GOTO_NEXT;
        }
     );
 
-   IMPLEMENT_BR(bc1t, 
+   IMPLEMENT_BR(bc1t,
        if (M.getRegister(CC_REG) == 1) {
          M.setPC(M.getPC() + (I.Imm << 2) + 4);
          GOTO_NEXT;
@@ -783,6 +841,9 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
   IMPLEMENT_JMP(call,
       M.setRegister(31, M.getPC()+4);
       M.setPC((M.getPC() & 0xF0000000) | (I.Addrs << 2));
+      //#ifdef DEBUG
+      //std::cerr << "Call to " << std::hex << M.getPC() <<
+      //#endif
     );
 
   IMPLEMENT_JMP(callr,
@@ -793,18 +854,18 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
   IMPLEMENT_JMP(jumpr,
       M.setPC(M.getRegister(I.RT));
     );
-  
+
   IMPLEMENT_JMP(jump,
       M.setPC((M.getPC() & 0xF0000000) | (I.Addrs << 2));
     );
 
   IMPLEMENT_JMP(ijmp,
-      M.setRegister(IJMP_REG, M.getRegister(IJMP_REG) & 0xFFFFF000); 
-      M.setRegister(IJMP_REG, M.getRegister(IJMP_REG) | (I.Imm & 0xFFF)); 
+      M.setRegister(IJMP_REG, M.getRegister(IJMP_REG) & 0xFFFFF000);
+      M.setRegister(IJMP_REG, M.getRegister(IJMP_REG) | (I.Imm & 0xFFF));
       uint32_t Target = M.getMemValueAt(M.getRegister(IJMP_REG) + M.getRegister(I.RT)).asI_;
       M.setPC(Target);
     );
-  
+
 	IMPLEMENT(syscall,
     	if (SyscallM.processSyscall(M))
       	return;
@@ -814,7 +875,7 @@ void ITDInterpreter::dispatch(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs
 }
 
 void ITDInterpreter::execute(Machine& M, uint32_t StartAddrs, uint32_t EndAddrs) {
-  if (DispatchValues.size() == 0 || !isAddrsContainedIn(StartAddrs, EndAddrs)) { 
+  if (DispatchValues.size() == 0 || !isAddrsContainedIn(StartAddrs, EndAddrs)) {
     DispatchValues.reserve((EndAddrs - StartAddrs)/4);
     DecodedInsts  .reserve((EndAddrs - StartAddrs)/4);
   }

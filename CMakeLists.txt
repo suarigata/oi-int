@@ -8,7 +8,7 @@ include_directories(include)
 
 add_subdirectory(arglib)
 
-add_library(dbt interpreter.cpp machine.cpp syscall.cpp)
+add_library(dbt interpreter.cpp machine.cpp syscall.cpp OIDecoder.cpp)
 
 add_executable(oi-int main.cpp)
 

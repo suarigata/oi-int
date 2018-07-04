@@ -1,0 +1,2 @@
+/usr/bin/ar qc libdbt.a  CMakeFiles/dbt.dir/interpreter.cpp.o CMakeFiles/dbt.dir/machine.cpp.o CMakeFiles/dbt.dir/syscall.cpp.o CMakeFiles/dbt.dir/OIDecoder.cpp.o
+/usr/bin/ranlib libdbt.a
